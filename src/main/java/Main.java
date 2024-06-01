@@ -1,29 +1,44 @@
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
 
 public class Main {
   public static void main(String[] args) {
-    // You can use print statements as follows for debugging, they'll be visible
-    // when running tests.
-    System.out.println("Logs from your program will appear here!");
-
-    // Uncomment this block to pass the first stage
 
     ServerSocket serverSocket = null;
     Socket clientSocket = null;
-    String ok = "HTTP/1.1 200 OK\r\n\r\n";
 
     try {
       serverSocket = new ServerSocket(4221);
-      // Since the tester restarts your program quite often, setting SO_REUSEADDR
-      // ensures that we don't run into 'Address already in use' errors
       serverSocket.setReuseAddress(true);
       clientSocket = serverSocket.accept(); // Wait for connection from client.
-      clientSocket.getOutputStream().write(ok.getBytes());
-      System.out.println("accepted new connection");
+      BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+
+      String url = handleRequestLine(in.readLine())[1];
+      String res = handleURLCheck(url);
+      clientSocket.getOutputStream().write(res.getBytes());
     } catch (IOException e) {
       System.out.println("IOException: " + e.getMessage());
+    }
+  }
+
+  public static String[] handleRequest(String request) {
+    return request.split("\r\n");
+  }
+
+  private static String[] handleRequestLine(String requestLine) {
+    return requestLine.split(" ");
+  }
+
+  private static String handleURLCheck(String url) {
+    String ok = "HTTP/1.1 200 OK\r\n\r\n";
+    String notFound = "HTTP/1.1 404 Not Found\r\n\r\n";
+    if (url.equals("/")) {
+      return ok;
+    } else {
+      return notFound;
     }
   }
 }
