@@ -12,6 +12,7 @@ public class Main {
 
     ServerSocket serverSocket = null;
     Socket clientSocket = null;
+    String ok = "HTTP/1.1 200 OK\r\n\r\n";
 
     try {
       serverSocket = new ServerSocket(4221);
@@ -19,6 +20,7 @@ public class Main {
       // ensures that we don't run into 'Address already in use' errors
       serverSocket.setReuseAddress(true);
       clientSocket = serverSocket.accept(); // Wait for connection from client.
+      clientSocket.getOutputStream().write(ok.getBytes());
       System.out.println("accepted new connection");
     } catch (IOException e) {
       System.out.println("IOException: " + e.getMessage());
