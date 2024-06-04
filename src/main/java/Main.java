@@ -33,12 +33,19 @@ public class Main {
   }
 
   private static String handleURLCheck(String url) {
-    String ok = "HTTP/1.1 200 OK\r\n\r\n";
-    String notFound = "HTTP/1.1 404 Not Found\r\n\r\n";
     if (url.equals("/")) {
-      return ok;
+      return responseBuilder("200 OK", "", "");
+
+    } else if (url.startsWith("/echo/", 0)) {
+      String inpuString = url.substring(6);
+      String header = String.format("\r\nContent-Type: text/plain\r\nContent-Length: %d", inpuString.length());
+      return responseBuilder("200 OK", header, inpuString);
     } else {
-      return notFound;
+      return responseBuilder("404 Not Found", "", "");
     }
+  }
+
+  private static String responseBuilder(String response, String header, String input) {
+    return String.format("%s%s%s%s%s", "HTTP/1.1 ", response, header, "\r\n\r\n", input);
   }
 }
