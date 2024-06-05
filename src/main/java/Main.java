@@ -13,15 +13,16 @@ public class Main {
     try {
       serverSocket = new ServerSocket(4221);
       serverSocket.setReuseAddress(true);
-      clientSocket = serverSocket.accept(); // Wait for connection from client.
-      BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+      while (true) {
+        clientSocket = serverSocket.accept(); // Wait for connection from client.
+        BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
 
-      Url url = buildUrl("", in);
-      String res = handleURLCheck(url.requestLine.split(" ")[1], url.headers, url.body);
-      System.out.println("Response: " + res);
-      clientSocket.getOutputStream().write(res.getBytes());
-      clientSocket.getOutputStream().flush();
-      clientSocket.close();
+        Url url = buildUrl("", in);
+        String res = handleURLCheck(url.requestLine.split(" ")[1], url.headers, url.body);
+        clientSocket.getOutputStream().write(res.getBytes());
+        clientSocket.getOutputStream().flush();
+        clientSocket.close();
+      }
     } catch (IOException e) {
       System.out.println("IOException: " + e.getMessage());
     }
@@ -33,18 +34,15 @@ public class Main {
     ArrayList<String> headers = new ArrayList<String>();
     ArrayList<String> body = new ArrayList<String>();
     String r = in.readLine();
+    url.setRequestLine(r);
     while (r != null && !r.isEmpty()) {
       if (track == 0) {
-        url.setRequestLine(r);
-        track++;
-      }
-      if (track == 1) {
         headers.add(r);
         if (r.equals("\r\n")) {
           track++;
         }
       }
-      if (track == 2) {
+      if (track == 1) {
         body.add(r);
       }
       r = in.readLine();
@@ -66,8 +64,6 @@ public class Main {
       return responseBuilder("200 OK", header, inpuString);
     } else if (url.equals("/user-agent")) {
       String res = handleUserAgent(headers);
-      System.out.println("HELLLLO");
-      System.out.println(res);
       return res;
     } else {
       return responseBuilder("404 Not Found", "", "");
@@ -86,7 +82,6 @@ public class Main {
         break;
       }
     }
-    System.out.println("HELLLLO");
     int l = userAgeString.length();
     String resHeader = "\r\nContent-Type: text/plain\r\nContent-Length: " + String.valueOf(l);
     return responseBuilder("200 OK", resHeader, userAgeString);
