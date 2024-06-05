@@ -1,13 +1,25 @@
 import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.CharBuffer;
 import java.util.ArrayList;
 
 public class Main {
-  public static void main(String[] args) {
+  static String dir;
 
+  public static void main(String[] args) {
+    for (int i = 0; i < args.length; i++) {
+      if (args[i].equals("--directory")) {
+        if (i + 1 >= args.length) {
+          System.out.println("Please provide a directory");
+          System.exit(1);
+        }
+        dir = args[i + 1];
+      }
+    }
     ServerSocket serverSocket = null;
     Socket clientSocket = null;
     try {
@@ -55,14 +67,20 @@ public class Main {
   }
 
   private static String handleURLCheck(String url, String[] headers, String[] body) {
+    System.out.println(url);
     if (url.equals("/")) {
       return responseBuilder("200 OK", "", "");
-
-    } else if (url.startsWith("/echo/", 0)) {
+    }
+    if (url.startsWith("/echo/", 0)) {
       String inpuString = url.substring(6);
       String header = String.format("\r\nContent-Type: text/plain\r\nContent-Length: %d", inpuString.length());
       return responseBuilder("200 OK", header, inpuString);
-    } else if (url.equals("/user-agent")) {
+    }
+    if (url.startsWith("/files/")) {
+      String fileName = url.substring(7);
+      return handleFile(fileName);
+    }
+    if (url.equals("/user-agent")) {
       String res = handleUserAgent(headers);
       return res;
     } else {
@@ -85,5 +103,25 @@ public class Main {
     int l = userAgeString.length();
     String resHeader = "\r\nContent-Type: text/plain\r\nContent-Length: " + String.valueOf(l);
     return responseBuilder("200 OK", resHeader, userAgeString);
+  }
+
+  private static String handleFile(String fileName) {
+    try {
+      String path = dir.concat(fileName);
+      FileReader f = new FileReader(path);
+      CharBuffer buf = CharBuffer.allocate(1024); // Replace Buffer with ByteBuffer
+      int i = f.read(buf);
+      String resHeader = "\r\nContent-Type: application/octet-stream\r\nContent-Length: " + String.valueOf(i);
+      String fileString = "";
+      for (char c : buf.array()) {
+        fileString += c;
+      }
+      f.close();
+      return responseBuilder("200 OK", resHeader, fileString);
+
+    } catch (IOException e) {
+      System.out.println("IOException: " + e.getMessage());
+      return responseBuilder("404 Not Found", "", "");
+    }
   }
 }
