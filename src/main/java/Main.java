@@ -129,10 +129,9 @@ public class Main {
       if (split.length < 2) {
         continue;
       }
-      if (split[0].equals("Accept-Encoding:")) {
+      if (split[0].equals("Accept-Encoding")) {
         String[] encodings = split[1].split(",");
         for (String encoding : encodings) {
-          System.out.println(encoding);
           if (encoding.trim().equals("gzip")) {
             res = "\r\nContent-Encoding: gzip";
             break;
