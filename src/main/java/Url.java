@@ -10,8 +10,9 @@ import lombok.ToString;
 @NoArgsConstructor
 @ToString
 public class Url {
+    String method;
     String requestLine;
     String[] headers;
-    String[] body;
+    String body;
 
 }

@@ -1,16 +1,19 @@
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.CharBuffer;
 import java.util.ArrayList;
 
 public class Main {
-  static String dir;
 
   public static void main(String[] args) {
+    String dir = "";
     for (int i = 0; i < args.length; i++) {
       if (args[i].equals("--directory")) {
         if (i + 1 >= args.length) {
@@ -20,54 +23,84 @@ public class Main {
         dir = args[i + 1];
       }
     }
-    ServerSocket serverSocket = null;
     Socket clientSocket = null;
-    try {
-      serverSocket = new ServerSocket(4221);
+    try (ServerSocket serverSocket = new ServerSocket(4221)) {
       serverSocket.setReuseAddress(true);
       while (true) {
         clientSocket = serverSocket.accept(); // Wait for connection from client.
+        System.out.println("Connection established");
         BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-
-        Url url = buildUrl("", in);
-        String res = handleURLCheck(url.requestLine.split(" ")[1], url.headers, url.body);
-        clientSocket.getOutputStream().write(res.getBytes());
-        clientSocket.getOutputStream().flush();
-        clientSocket.close();
+        OutputStream out = clientSocket.getOutputStream();
+        Url url = buildUrl(in);
+        if ("POST".equals(url.getMethod())) {
+          String res = handlePOST(url.requestLine, url.getHeaders(), url.getBody(), dir);
+          out.write(res.getBytes());
+        }
+        if ("GET".equals(url.getMethod())) {
+          String res = handleGET(url.requestLine, url.getHeaders(), url.body, dir);
+          out.write(res.getBytes());
+        }
+        out.flush();
+        out.close();
+        in.close();
       }
     } catch (IOException e) {
+      System.out.println("Error occurred");
       System.out.println("IOException: " + e.getMessage());
     }
   }
 
-  private static Url buildUrl(String request, BufferedReader in) throws IOException {
-    int track = 0;
+  public static Url buildUrl(BufferedReader in) throws IOException {
     Url url = new Url();
     ArrayList<String> headers = new ArrayList<String>();
-    ArrayList<String> body = new ArrayList<String>();
     String r = in.readLine();
-    url.setRequestLine(r);
+    String[] s = r.split(" ");
+    url.setMethod(s[0]);
+    url.setRequestLine(s[1]);
+    r = in.readLine();
     while (r != null && !r.isEmpty()) {
-      if (track == 0) {
-        headers.add(r);
-        if (r.equals("\r\n")) {
-          track++;
-        }
-      }
-      if (track == 1) {
-        body.add(r);
-      }
+      headers.add(r);
       r = in.readLine();
     }
-    String[] h = headers.toArray(String[]::new);
-    String[] b = body.toArray(String[]::new);
+    CharBuffer buff = CharBuffer.allocate(1024);
+    if (in.ready()) {
+      int l = in.read(buff);
+      if (l == -1) {
+        l = 0;
+      }
+      String body = "";
+      for (int i = 0; i < l; i++) {
+        body += buff.get(i);
+      }
+      url.setBody(body);
+    }
+    String[] h = headers.toArray(new String[0]);
     url.setHeaders(h);
-    url.setBody(b);
     return url;
   }
 
-  private static String handleURLCheck(String url, String[] headers, String[] body) {
+  private static String handlePOST(String url, String[] headers, String body, String dir) {
     System.out.println(url);
+    if (url.startsWith("/files/")) {
+      String fileName = url.substring(7);
+      File file = new File(dir, fileName);
+      try {
+        file.getParentFile().mkdirs();
+        if (file.createNewFile()) {
+          FileWriter myWriter = new FileWriter(file);
+          myWriter.write(body);
+          myWriter.close();
+        }
+
+        return "HTTP/1.1 201 Created\r\n\r\n";
+      } catch (Exception e) {
+        System.out.println("IOException: " + e.getMessage());
+      }
+    }
+    return responseBuilder("201 Server Error", "", "");
+  }
+
+  private static String handleGET(String url, String[] headers, String body, String dir) {
     if (url.equals("/")) {
       return responseBuilder("200 OK", "", "");
     }
@@ -78,7 +111,7 @@ public class Main {
     }
     if (url.startsWith("/files/")) {
       String fileName = url.substring(7);
-      return handleFile(fileName);
+      return handleFile(fileName, dir);
     }
     if (url.equals("/user-agent")) {
       String res = handleUserAgent(headers);
@@ -105,7 +138,7 @@ public class Main {
     return responseBuilder("200 OK", resHeader, userAgeString);
   }
 
-  private static String handleFile(String fileName) {
+  private static String handleFile(String fileName, String dir) {
     try {
       String path = dir.concat(fileName);
       FileReader f = new FileReader(path);
@@ -119,8 +152,8 @@ public class Main {
       f.close();
       return responseBuilder("200 OK", resHeader, fileString);
 
-    } catch (IOException e) {
-      System.out.println("IOException: " + e.getMessage());
+    } catch (Exception e) {
+      System.out.println(e.getMessage());
       return responseBuilder("404 Not Found", "", "");
     }
   }
