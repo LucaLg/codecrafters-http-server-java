@@ -107,6 +107,12 @@ public class Main {
     if (url.startsWith("/echo/", 0)) {
       String inpuString = url.substring(6);
       String header = String.format("\r\nContent-Type: text/plain\r\nContent-Length: %d", inpuString.length());
+      for (String h : headers) {
+        if (h.equals("Accept-Encoding: gzip")) {
+          header = "\r\nContent-Encoding: gzip" + header;
+          break;
+        }
+      }
       return responseBuilder("200 OK", header, inpuString);
     }
     if (url.startsWith("/files/")) {
