@@ -106,14 +106,9 @@ public class Main {
     }
     if (url.startsWith("/echo/", 0)) {
       String inpuString = url.substring(6);
-      String header = String.format("\r\nContent-Type: text/plain\r\nContent-Length: %d", inpuString.length());
-      for (String h : headers) {
-        if (h.equals("Accept-Encoding: gzip")) {
-          header = "\r\nContent-Encoding: gzip" + header;
-          break;
-        }
-      }
-      return responseBuilder("200 OK", header, inpuString);
+      String resHeader = String.format("\r\nContent-Type: text/plain\r\nContent-Length: %d", inpuString.length());
+      resHeader = resHeader + handleEncodding(headers);
+      return responseBuilder("200 OK", resHeader, inpuString);
     }
     if (url.startsWith("/files/")) {
       String fileName = url.substring(7);
@@ -125,6 +120,26 @@ public class Main {
     } else {
       return responseBuilder("404 Not Found", "", "");
     }
+  }
+
+  private static String handleEncodding(String[] headers) {
+    String res = "";
+    for (String h : headers) {
+      String[] split = h.split(":");
+      if (split.length < 2) {
+        continue;
+      }
+      if (split[0].equals("Accept-Encoding:")) {
+        String[] encodings = split[1].split(",");
+        for (String encoding : encodings) {
+          if (encoding.trim().equals("gzip")) {
+            res = "\r\nContent-Encoding: gzip";
+            break;
+          }
+        }
+      }
+    }
+    return res;
   }
 
   private static String responseBuilder(String response, String header, String input) {
