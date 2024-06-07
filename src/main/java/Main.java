@@ -1,4 +1,5 @@
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -9,6 +10,10 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.CharBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Optional;
+import java.util.stream.Stream;
+import java.util.zip.GZIPOutputStream;
 
 public class Main {
 
@@ -23,26 +28,32 @@ public class Main {
         dir = args[i + 1];
       }
     }
-    Socket clientSocket = null;
+    final String directory = dir;
     try (ServerSocket serverSocket = new ServerSocket(4221)) {
       serverSocket.setReuseAddress(true);
       while (true) {
-        clientSocket = serverSocket.accept(); // Wait for connection from client.
-        System.out.println("Connection established");
-        BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-        OutputStream out = clientSocket.getOutputStream();
-        Url url = buildUrl(in);
-        if ("POST".equals(url.getMethod())) {
-          String res = handlePOST(url.requestLine, url.getHeaders(), url.getBody(), dir);
-          out.write(res.getBytes());
-        }
-        if ("GET".equals(url.getMethod())) {
-          String res = handleGET(url.requestLine, url.getHeaders(), url.body, dir);
-          out.write(res.getBytes());
-        }
-        out.flush();
-        out.close();
-        in.close();
+        Socket clientSocket = serverSocket.accept(); // Wait for connection from client.
+        new Thread(() -> {
+          try {
+            System.out.println("Connection established");
+            BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+            OutputStream out = clientSocket.getOutputStream();
+            Url url = buildUrl(in);
+            if ("POST".equals(url.getMethod())) {
+              String res = handlePOST(url.requestLine, url.getHeaders(), url.getBody(), directory, out);
+              out.write(res.getBytes());
+            }
+            if ("GET".equals(url.getMethod())) {
+              handleGET(url.requestLine, url.getHeaders(), url.body, directory, out);
+            }
+            out.flush();
+            out.close();
+            in.close();
+          } catch (IOException e) {
+            System.out.println("Error occurred");
+            System.out.println("IOException: " + e.getMessage());
+          }
+        }).start();
       }
     } catch (IOException e) {
       System.out.println("Error occurred");
@@ -79,8 +90,7 @@ public class Main {
     return url;
   }
 
-  private static String handlePOST(String url, String[] headers, String body, String dir) {
-    System.out.println(url);
+  private static String handlePOST(String url, String[] headers, String body, String dir, OutputStream out) {
     if (url.startsWith("/files/")) {
       String fileName = url.substring(7);
       File file = new File(dir, fileName);
@@ -91,7 +101,7 @@ public class Main {
           myWriter.write(body);
           myWriter.close();
         }
-
+        out.write("HTTP/1.1 201 Created\r\n\r\n".getBytes());
         return "HTTP/1.1 201 Created\r\n\r\n";
       } catch (Exception e) {
         System.out.println("IOException: " + e.getMessage());
@@ -100,46 +110,97 @@ public class Main {
     return responseBuilder("201 Server Error", "", "");
   }
 
-  private static String handleGET(String url, String[] headers, String body, String dir) {
+  private static String handleGET(String url, String[] headers, String body, String dir, OutputStream out)
+      throws IOException {
+    String res = "";
     if (url.equals("/")) {
-      return responseBuilder("200 OK", "", "");
+      res = responseBuilder("200 OK", "", "");
+      out.write(res.getBytes());
     }
     if (url.startsWith("/echo/", 0)) {
       String inpuString = url.substring(6);
-      String resHeader = String.format("\r\nContent-Type: text/plain\r\nContent-Length: %d", inpuString.length());
-      resHeader = resHeader + handleEncodding(headers);
-      return responseBuilder("200 OK", resHeader, inpuString);
+      byte[][] encodingArr = handleEncodding(headers, inpuString);
+      byte[] reqLine = "HTTP/1.1 200 OK".getBytes();
+      System.out.println(encodingArr[0]);
+      System.out.println(encodingArr[1]);
+      out.write(reqLine);
+      out.write(encodingArr[0]);
+      out.write(encodingArr[1]);
+      return "";
     }
     if (url.startsWith("/files/")) {
       String fileName = url.substring(7);
-      return handleFile(fileName, dir);
+      res = handleFile(fileName, dir);
+      out.write(res.getBytes());
     }
     if (url.equals("/user-agent")) {
-      String res = handleUserAgent(headers);
+      res = handleUserAgent(headers);
+      out.write(res.getBytes());
       return res;
     } else {
-      return responseBuilder("404 Not Found", "", "");
-    }
-  }
-
-  private static String handleEncodding(String[] headers) {
-    String res = "";
-    for (String h : headers) {
-      String[] split = h.split(":");
-      if (split.length < 2) {
-        continue;
-      }
-      if (split[0].equals("Accept-Encoding")) {
-        String[] encodings = split[1].split(",");
-        for (String encoding : encodings) {
-          if (encoding.trim().equals("gzip")) {
-            res = "\r\nContent-Encoding: gzip";
-            break;
-          }
-        }
-      }
+      res = responseBuilder("404 Not Found", "", "");
+      out.write(res.getBytes());
     }
     return res;
+  }
+
+  private static byte[] encodeString(String inputString) throws IOException {
+    ByteArrayOutputStream bais = new ByteArrayOutputStream();
+    try (GZIPOutputStream gos = new GZIPOutputStream(bais)) {
+      gos.write(inputString.getBytes());
+    }
+    return bais.toByteArray();
+  }
+
+  private static byte[][] handleEncodding(String[] headers, String inputString) {
+    String resHeader = String.format("\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n",
+        inputString.length());
+    byte[][] resArr = new byte[][] { resHeader.getBytes(), inputString.getBytes() };
+    try {
+      Stream<String> headersStream = Arrays.stream(headers);
+      Optional<String> encodingHeader = headersStream.filter(h -> h.startsWith("Accept-Encoding: ")).findAny();
+      encodingHeader.ifPresent(h -> {
+        Stream<String> encodings = Arrays.stream(h.split(":")[1].split(","));
+        encodings.filter(e -> e.trim().equals("gzip")).findAny().ifPresent(e -> {
+          try {
+            byte[] zip = encodeString(inputString);
+            resArr[0] = String
+                .format("\r\nContent-Encoding: gzip\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n",
+                    zip.length)
+                .getBytes();
+            resArr[1] = zip;
+          } catch (IOException e1) {
+            e1.printStackTrace();
+          }
+        });
+      });
+      System.out.println("ZIP:" + new String(resArr[1]));
+      System.out.println("RESHEADER:" + new String(resArr[0]));
+      // for (String h : headers) {
+      // String[] split = h.split(":");
+      // if (split.length < 2) {
+      // continue;
+      // }
+      // if (split[0].equals("Accept-Encoding")) {
+      // String[] encodings = split[1].split(",");
+      // for (String encoding : encodings) {
+      // if (encoding.trim().equals("gzip")) {
+      // resHeader = String.format("\r\nContent-Encoding: gzip\r\nContent-Type:
+      // text/plain\r\nContent-Length: %d",
+      // zip.length);
+      // resArr[0] = resHeader.getBytes();
+      // resArr[1] = zip;
+      // System.out.println("ZIP:" + resArr[1]);
+
+      // return resArr;
+      // }
+      // }
+      // }
+      // }
+    } catch (Exception e) {
+      System.out.println(e.getMessage());
+    }
+    return resArr;
   }
 
   private static String responseBuilder(String response, String header, String input) {
