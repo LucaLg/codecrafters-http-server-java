@@ -29,10 +29,12 @@ public class Main {
       }
     }
     final String directory = dir;
+    // Create a server socket that listens on port 4221
     try (ServerSocket serverSocket = new ServerSocket(4221)) {
       serverSocket.setReuseAddress(true);
+      // Accept incoming connections and handle them in a new thread
       while (true) {
-        Socket clientSocket = serverSocket.accept(); // Wait for connection from client.
+        Socket clientSocket = serverSocket.accept();
         new Thread(() -> {
           try {
             System.out.println("Connection established");
@@ -61,6 +63,13 @@ public class Main {
     }
   }
 
+  /***
+   * Builds a Url object from the input stream
+   * 
+   * @param in
+   * @return URL
+   * @throws IOException
+   */
   public static Url buildUrl(BufferedReader in) throws IOException {
     Url url = new Url();
     ArrayList<String> headers = new ArrayList<String>();
@@ -90,6 +99,17 @@ public class Main {
     return url;
   }
 
+  /***
+   * Handles POST requests based on the request line and headers, writes the
+   * response to the output stream
+   * 
+   * @param url
+   * @param headers
+   * @param body
+   * @param dir
+   * @param out
+   * @return
+   */
   private static String handlePOST(String url, String[] headers, String body, String dir, OutputStream out) {
     if (url.startsWith("/files/")) {
       String fileName = url.substring(7);
@@ -110,6 +130,18 @@ public class Main {
     return responseBuilder("201 Server Error", "", "");
   }
 
+  /***
+   * Handles GET requests based on the request line and headers, writes the
+   * response to the output stream
+   * 
+   * @param url
+   * @param headers
+   * @param body
+   * @param dir
+   * @param out
+   * @return
+   * @throws IOException
+   */
   private static String handleGET(String url, String[] headers, String body, String dir, OutputStream out)
       throws IOException {
     String res = "";
@@ -121,8 +153,6 @@ public class Main {
       String inpuString = url.substring(6);
       byte[][] encodingArr = handleEncodding(headers, inpuString);
       byte[] reqLine = "HTTP/1.1 200 OK".getBytes();
-      System.out.println(encodingArr[0]);
-      System.out.println(encodingArr[1]);
       out.write(reqLine);
       out.write(encodingArr[0]);
       out.write(encodingArr[1]);
@@ -144,6 +174,13 @@ public class Main {
     return res;
   }
 
+  /**
+   * Takes in a string and returns a byte array of the compressed string with gzip
+   * 
+   * @param inputString
+   * @return
+   * @throws IOException
+   */
   private static byte[] encodeString(String inputString) throws IOException {
     ByteArrayOutputStream bais = new ByteArrayOutputStream();
     try (GZIPOutputStream gos = new GZIPOutputStream(bais)) {
@@ -152,6 +189,14 @@ public class Main {
     return bais.toByteArray();
   }
 
+  /**
+   * Takes in headers and inputString and returns a byte[][] for response header
+   * and body based on the given encoding header and methods
+   * 
+   * @param headers
+   * @param inputString
+   * @return byte[][] for response header and body
+   */
   private static byte[][] handleEncodding(String[] headers, String inputString) {
     String resHeader = String.format("\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n",
         inputString.length());
@@ -174,37 +219,10 @@ public class Main {
           }
         });
       });
-      System.out.println("ZIP:" + new String(resArr[1]));
-      System.out.println("RESHEADER:" + new String(resArr[0]));
-      // for (String h : headers) {
-      // String[] split = h.split(":");
-      // if (split.length < 2) {
-      // continue;
-      // }
-      // if (split[0].equals("Accept-Encoding")) {
-      // String[] encodings = split[1].split(",");
-      // for (String encoding : encodings) {
-      // if (encoding.trim().equals("gzip")) {
-      // resHeader = String.format("\r\nContent-Encoding: gzip\r\nContent-Type:
-      // text/plain\r\nContent-Length: %d",
-      // zip.length);
-      // resArr[0] = resHeader.getBytes();
-      // resArr[1] = zip;
-      // System.out.println("ZIP:" + resArr[1]);
-
-      // return resArr;
-      // }
-      // }
-      // }
-      // }
     } catch (Exception e) {
       System.out.println(e.getMessage());
     }
     return resArr;
-  }
-
-  private static String responseBuilder(String response, String header, String input) {
-    return String.format("%s%s%s%s%s", "HTTP/1.1 ", response, header, "\r\n\r\n", input);
   }
 
   private static String handleUserAgent(String[] headers) {
@@ -220,11 +238,19 @@ public class Main {
     return responseBuilder("200 OK", resHeader, userAgeString);
   }
 
+  /**
+   * Handles file requests based on the file name and directory, writes the
+   * response to the output stream
+   * 
+   * @param fileName
+   * @param dir
+   * @return
+   */
   private static String handleFile(String fileName, String dir) {
     try {
       String path = dir.concat(fileName);
       FileReader f = new FileReader(path);
-      CharBuffer buf = CharBuffer.allocate(1024); // Replace Buffer with ByteBuffer
+      CharBuffer buf = CharBuffer.allocate(1024);
       int i = f.read(buf);
       String resHeader = "\r\nContent-Type: application/octet-stream\r\nContent-Length: " + String.valueOf(i);
       String fileString = "";
@@ -238,5 +264,17 @@ public class Main {
       System.out.println(e.getMessage());
       return responseBuilder("404 Not Found", "", "");
     }
+  }
+
+  /**
+   * Response Builder helper function
+   * 
+   * @param response
+   * @param header
+   * @param input
+   * @return
+   */
+  private static String responseBuilder(String response, String header, String input) {
+    return String.format("%s%s%s%s%s", "HTTP/1.1 ", response, header, "\r\n\r\n", input);
   }
 }
